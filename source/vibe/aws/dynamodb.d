@@ -1,5 +1,5 @@
 /**
-  DDB
+  DynamoDB client routines
  */
 
 module vibe.aws.dynamodb;
@@ -8,6 +8,7 @@ import std.algorithm;
 import std.array;
 import std.base64;
 import std.conv;
+import std.container;
 import std.stdio;
 import std.string;
 import std.traits;
@@ -17,6 +18,9 @@ import vibe.data.json;
 
 import vibe.aws.aws;
 import vibe.aws.morejson;
+
+public alias StringSet = RedBlackTree!string;
+public alias stringSet = redBlackTree!(false, string);
 
 /**
   Throttled by Control Plane API
@@ -37,6 +41,14 @@ class ProvisionedThroughputExceededException : AWSException
     this(string type, string message)
     {
         super(type, true, message);
+    }
+}
+
+class ItemNotFoundException : AWSException
+{
+    this(string message)
+    {
+        super("ItemNotFoundException", false, message);
     }
 }
 
@@ -127,14 +139,38 @@ class Table
         ]));
         
         Item ret;
+        auto itemKey = "Item" in resp.responseBody;
+        if (!itemKey) 
+            throw new ItemNotFoundException("No item with key " ~ key.toString());
 
-        auto obj = resp.responseBody["Item"].get!(Json[string]);
+        auto obj = itemKey.get!(Json[string]);
         foreach (k; obj.byKey)
         {
             ret.attrs[k] = DDBtoVariant(obj[k]);
         }
 
         return ret;
+    }
+
+    void del(T)(string hashKey, T hashValue) {
+        return del(Json([
+            hashKey: variantToDDB(toVariant(hashValue))
+            ]));
+    }
+
+    void del(T, U)(string hashKey, T hashValue, string rangeKey, U rangeValue) {
+        return del(Json([
+            hashKey: variantToDDB(toVariant(hashValue)),
+            rangeKey: variantToDDB(toVariant(rangeValue))
+            ]));
+    }
+
+    private void del(Json key)
+    {
+        auto resp = m_client.ddbRequest("DeleteItem", Json([
+            "TableName": Json(this.name),
+            "Key": key
+        ]));
     }
 }
 
@@ -158,6 +194,9 @@ private Json variantToDDB(Variant v)
         ret["N"] = Json(v.coerce!string);
     else if (v.convertsTo!long)
         ret["N"] = Json(v.coerce!string);
+    else if (v.type == typeid(StringSet)) {
+        ret["SS"] = Json(v.get!StringSet.array().map!(s => Json(s)).array());
+    }
     else if (v.type == typeid(Variant[string])) {
         auto o = Json.emptyObject;
         auto value = v.get!(Variant[string]);
@@ -194,6 +233,15 @@ private Variant DDBtoVariant(Json obj)
             return Variant(pv.get!string.to!long);
         }
     }
+    pv = "SS" in obj;
+    if (pv) {
+        StringSet ss = stringSet();
+        foreach (x; arrayIterator(*pv)) 
+        {
+            ss.stableInsert(x.get!string);
+        }
+        return Variant(ss);
+    }
     pv = "M" in obj;
     if (pv) {
         // Object
@@ -214,6 +262,7 @@ unittest {
     assert(variantToDDB(Variant(3))["N"] == Json("3"));
     assert(variantToDDB(Variant(3.14))["N"] == Json("3.14"));
     assert(variantToDDB(Variant(true))["BOOL"] == Json("true"));
+    assert(variantToDDB(Variant(stringSet("a", "b")))["SS"] == Json([Json("a"), Json("b")]));
     //assert(variantToDDB(Variant(["a", "b"]))["SS"] == Json([Json("a"), Json("b")]));
 }
 
@@ -227,6 +276,9 @@ private Variant toVariant(Variant v)
     return v;
 }
 
+/**
+  A DynamoDB item
+ */
 struct Item
 {
     Variant[string] attrs;
@@ -235,6 +287,16 @@ struct Item
         if (!isAssociativeArray!T)
     {
         attrs[key] = toVariant(value);
+        return this;
+    }
+
+	inout(Variant)* opBinaryRight(string op)(string other) inout if(op == "in") {
+		return other in attrs;
+	}
+
+    ref Item unset(string key)
+    {
+        attrs.remove(key);
         return this;
     }
 
@@ -274,3 +336,9 @@ struct Item
     }
 }
 
+unittest {
+    Item u;
+    u.set("set", stringSet());
+    u["set"].get!StringSet.stableInsert("hoi");
+    assert("hoi" in u["set"].get!StringSet);
+}
