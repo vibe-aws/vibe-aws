@@ -178,7 +178,7 @@ class AWSClient {
 
         auto bod = response.readJson();
 
-        throw makeException(bod.__type.get!string, response.statusCode / 100 == 5, bod.message.opt!string(""));
+        throw makeException(bod["type"].get!string, response.statusCode / 100 == 5, bod["message"].opt!string(""));
     }
     
     AWSException makeException(string type, bool retriable, string message)
@@ -199,10 +199,13 @@ private void signRequest(HTTPClientRequest req, ubyte[] requestBody, AWSCredenti
     signRequest.timeStringUTC = timeFromISOString(timeString);
     signRequest.region = region;
     signRequest.service = service;
+    import std.conv:to;
     signRequest.canonicalRequest.method = req.method.to!string();
     signRequest.canonicalRequest.uri = req.requestURL; // FIXME: Can include query params
     auto reqHeaders = req.headers.toRepresentation;
     foreach (x; reqHeaders) {
+        if(x.key.toLower == "connection")
+            continue;
         signRequest.canonicalRequest.headers[x.key] = x.value;
     }
     signRequest.canonicalRequest.payload = requestBody;
