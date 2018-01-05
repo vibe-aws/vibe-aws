@@ -1,8 +1,7 @@
 {
 	"name": "vibe-aws",
-    "version": "0.0.1",
 	"description": "AWS client library for D",
-	"copyright": "Copyright © 2015, Rico Huijbers",
+	"copyright": "Copyright © 2018, Rico Huijbers",
     "license": "MIT",
 	"authors": ["rix0rrr","Stephan Dilly"],
     "targetType": "library",
