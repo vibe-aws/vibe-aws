@@ -4,9 +4,9 @@
 	"description": "AWS client library for D",
 	"copyright": "Copyright © 2015, Rico Huijbers",
     "license": "MIT",
-	"authors": ["rix0rrr"],
+	"authors": ["rix0rrr","Stephan Dilly"],
     "targetType": "library",
 	"dependencies": {
-		"vibe-d": "~>0.7.19"
+		"vibe-d": "~>0.8"
 	}
 }

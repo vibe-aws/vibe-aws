@@ -168,7 +168,7 @@ class AWSClient {
     protected auto currentTimeString()
     {
         auto t = Clock.currTime(UTC());
-        t.fracSec = FracSec.zero();
+        t.fracSecs = Duration.zero;
         return t.toISOString();
     }
 
@@ -210,7 +210,7 @@ private void signRequest(HTTPClientRequest req, ubyte[] requestBody, AWSCredenti
     }
     signRequest.canonicalRequest.payload = requestBody;
 
-    ubyte[] signKey = signingKey(creds.accessKeySecret, dateString, region, service);
+    ubyte[] signKey = signingKey(creds.accessKeySecret, dateString, region, service).dup;
     ubyte[] stringToSign = cast(ubyte[])signableString(signRequest);
     auto signature = sign(signKey, stringToSign);
 
