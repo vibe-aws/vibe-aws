@@ -178,12 +178,14 @@ class AWSClient {
 
         auto bod = response.readJson();
 
-        throw makeException(bod["type"].get!string, response.statusCode / 100 == 5, bod["message"].opt!string(""));
+        //logError("error: %s",bod);
+
+        throw makeException(bod["__type"].get!string, response.statusCode / 100 == 5, bod["Message"].opt!string(""));
     }
     
     AWSException makeException(string type, bool retriable, string message)
     {
-        if (type == exceptionPrefix ~ "UnrecognizedClientException" || type == exceptionPrefix ~ "InvalidSignatureException")
+        if (type == exceptionPrefix ~ "UnrecognizedClientException" || type == exceptionPrefix ~ "InvalidSignatureException" || type == exceptionPrefix ~ "AccessDeniedException")
             throw new AuthorizationException(type, message);
         return new AWSException(type, retriable, message);
     }
