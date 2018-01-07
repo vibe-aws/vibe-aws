@@ -20,6 +20,7 @@ DynamoDB
 
 Only simple puts and gets are supported yet:
 
+```d
     import std.stdio;
     import vibe.aws.dynamodb;
 
@@ -32,3 +33,4 @@ Only simple puts and gets are supported yet:
 
     auto item2 = ddb.get("key", "value");
     writeln(item2["key"]);
+```
