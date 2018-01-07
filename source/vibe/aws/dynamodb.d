@@ -118,6 +118,16 @@ class Table
         ]));
     }
 
+    void put(in Item item, string conditionExpression, Item attributeValues)
+    {
+        auto resp = m_client.ddbRequest("PutItem", Json([
+            "TableName": Json(this.name),
+            "Item": item.ddbJson,
+            "ConditionExpression": Json(conditionExpression),
+            "ExpressionAttributeValues": attributeValues.ddbJson
+        ]));
+    }
+
     Item get(T)(string hashKey, T hashValue) {
         return get(Json([
             hashKey: variantToDDB(toVariant(hashValue))
