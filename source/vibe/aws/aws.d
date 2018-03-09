@@ -35,11 +35,12 @@ class AWSException : Exception
     /**
       Returns the 'ThrottlingException' from 'com.amazon.coral.service#ThrottlingException'
      */
-    @property string simpleType() 
+    @property string simpleType()
     {
         auto h = type.indexOf('#');
-        if (h == -1) return type;
-        return type[h+1..$];
+        if (h == -1)
+            return type;
+        return type[h + 1 .. $];
     }
 }
 
@@ -95,23 +96,41 @@ struct ExponentialBackoff
     }
 }
 
-class AWSClient {
+///
+class AWSClient
+{
     protected static immutable exceptionPrefix = "com.amazon.coral.service#";
 
     immutable string endpoint;
+    immutable string endpointUrl;
     immutable string region;
     immutable string service;
 
     private AWSCredentialSource m_credsSource;
     private ClientConfiguration m_config;
 
-    this(string endpoint, string region, string service, AWSCredentialSource credsSource, ClientConfiguration config=ClientConfiguration()) 
+    this(string endpoint, string region, string service, AWSCredentialSource credsSource,
+            ClientConfiguration config = ClientConfiguration())
     {
         this.region = region;
-        this.endpoint = endpoint;
         this.service = service;
         this.m_credsSource = credsSource;
         this.m_config = config;
+
+        if (endpoint.startsWith("http://"))
+        {
+            this.endpointUrl = endpoint;
+            this.endpoint = endpoint[7 .. $];
+        }
+        else if (endpoint.startsWith("https://"))
+        {
+            this.endpointUrl = endpoint;
+            this.endpoint = endpoint[8 .. $];
+        }
+        else
+        {
+            assert(false, "endpoints shall start with http:// or https://");
+        }
     }
 
     AWSResponse doRequest(string operation, Json request)
@@ -126,11 +145,12 @@ class AWSClient {
             {
                 // FIXME: Auto-retries for retriable errors
                 // FIXME: Report credential errors and retry for failed credentials
-                auto resp = requestHTTP("https://" ~ endpoint ~ "/", (scope req) {
+                auto resp = requestHTTP(this.endpointUrl ~ "/", (scope req) {
                     auto timeString = currentTimeString();
-                    auto jsonString = cast(ubyte[])request.toString();
+                    auto jsonString = cast(ubyte[]) request.toString();
 
                     req.method = HTTPMethod.POST;
+                    req.headers["x-amz-content-sha256"] = hash(jsonString);
                     req.headers["x-amz-target"] = operation;
                     req.headers["x-amz-date"] = currentTimeString();
                     req.headers["host"] = endpoint;
@@ -174,24 +194,29 @@ class AWSClient {
 
     void checkForError(HTTPClientResponse response)
     {
-        if (response.statusCode < 400) return; // No error
+        if (response.statusCode < 400)
+            return; // No error
 
         auto bod = response.readJson();
 
         //logError("error: %s",bod);
 
-        throw makeException(bod["__type"].get!string, response.statusCode / 100 == 5, bod["Message"].opt!string(""));
+        throw makeException(bod["__type"].get!string,
+                response.statusCode / 100 == 5, bod["Message"].opt!string(""));
     }
-    
+
     AWSException makeException(string type, bool retriable, string message)
     {
-        if (type == exceptionPrefix ~ "UnrecognizedClientException" || type == exceptionPrefix ~ "InvalidSignatureException" || type == exceptionPrefix ~ "AccessDeniedException")
+        if (type == exceptionPrefix ~ "UnrecognizedClientException"
+                || type == exceptionPrefix ~ "InvalidSignatureException"
+                || type == exceptionPrefix ~ "AccessDeniedException")
             throw new AuthorizationException(type, message);
         return new AWSException(type, retriable, message);
     }
 }
 
-private void signRequest(HTTPClientRequest req, ubyte[] requestBody, AWSCredentials creds, string timeString, string region, string service)
+private void signRequest(HTTPClientRequest req, ubyte[] requestBody,
+        AWSCredentials creds, string timeString, string region, string service)
 {
     auto dateString = dateFromISOString(timeString);
     auto credScope = dateString ~ "/" ~ region ~ "/" ~ service;
@@ -201,22 +226,25 @@ private void signRequest(HTTPClientRequest req, ubyte[] requestBody, AWSCredenti
     signRequest.timeStringUTC = timeFromISOString(timeString);
     signRequest.region = region;
     signRequest.service = service;
-    import std.conv:to;
+    import std.conv : to;
+
     signRequest.canonicalRequest.method = req.method.to!string();
     signRequest.canonicalRequest.uri = req.requestURL; // FIXME: Can include query params
     auto reqHeaders = req.headers.toRepresentation;
-    foreach (x; reqHeaders) {
-        if(x.key.toLower == "connection")
+    foreach (x; reqHeaders)
+    {
+        if (x.key.toLower == "connection")
             continue;
         signRequest.canonicalRequest.headers[x.key] = x.value;
     }
     signRequest.canonicalRequest.payload = requestBody;
 
     ubyte[] signKey = signingKey(creds.accessKeySecret, dateString, region, service).dup;
-    ubyte[] stringToSign = cast(ubyte[])signableString(signRequest);
+    ubyte[] stringToSign = cast(ubyte[]) signableString(signRequest);
     auto signature = sign(signKey, stringToSign);
 
-    auto authHeader = createSignatureHeader(creds.accessKeyID, credScope, signRequest.canonicalRequest.headers, signature);
+    auto authHeader = createSignatureHeader(creds.accessKeyID, credScope,
+            signRequest.canonicalRequest.headers, signature);
     req.headers["authorization"] = authHeader;
 }
 
@@ -231,5 +259,8 @@ class AWSResponse
         m_body = response.readJson();
     }
 
-    @property Json responseBody() { return m_body; }
+    @property Json responseBody()
+    {
+        return m_body;
+    }
 }

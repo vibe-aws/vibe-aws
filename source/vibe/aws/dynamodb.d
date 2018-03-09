@@ -22,6 +22,36 @@ import vibe.aws.morejson;
 public alias StringSet = RedBlackTree!string;
 public alias stringSet = redBlackTree!(false, string);
 
+///
+struct CreateTableParams
+{
+    ///
+    struct AttributeDefinition
+    {
+        string AttributeName;
+        string AttributeType;
+    }
+
+    ///
+    struct KeyDefinition
+    {
+        string AttributeName;
+        string KeyType;
+    }
+
+    ///
+    struct ProvisionDefinition
+    {
+        long ReadCapacityUnits;
+        long WriteCapacityUnits;
+    }
+
+    string TableName;
+    AttributeDefinition[] AttributeDefinitions;
+    KeyDefinition[] KeySchema;
+    ProvisionDefinition ProvisionedThroughput;
+}
+
 /**
   Throttled by Control Plane API
  */
@@ -62,8 +92,14 @@ class DynamoDB : AWSClient
 {
     private static immutable string apiVersion = "DynamoDB_20120810";
 
-    this(string region, AWSCredentialSource credsSource) {
-        super("dynamodb." ~ region ~ ".amazonaws.com", region, "dynamodb", credsSource);
+    this(string region, AWSCredentialSource credsSource)
+    {
+        super("https://dynamodb." ~ region ~ ".amazonaws.com", region, "dynamodb", credsSource);
+    }
+
+    this(string endpoint = "http://localhost:8000")
+    {
+        super(endpoint, region, "dynamodb", new StaticAWSCredentials("", ""));
     }
 
     override AWSException makeException(string type, bool retriable, string message)
@@ -93,6 +129,18 @@ class DynamoDB : AWSClient
         return resp.responseBody["TableNames"].arrayIterator().map!(t => table(t.get!string));
         // FIXME: continuation token for > 100 tables, but who actually needs that...
     }
+
+    @property auto tableNames()
+    {
+        auto resp = ddbRequest("ListTables", Json.emptyObject);
+        return resp.responseBody["TableNames"].arrayIterator().map!(t => t.get!string);
+        // FIXME: continuation token for > 100 tables, but who actually needs that...
+    }
+
+    auto createTable(CreateTableParams params)
+    {
+        return ddbRequest("CreateTable", serializeToJson(params));
+    }
 }
 
 /**
@@ -112,45 +160,36 @@ class Table
 
     void put(in Item item)
     {
-        auto resp = m_client.ddbRequest("PutItem", Json([
-            "TableName": Json(this.name),
-            "Item": item.ddbJson
-        ]));
+        auto resp = m_client.ddbRequest("PutItem", Json(["TableName"
+                : Json(this.name), "Item" : item.ddbJson]));
     }
 
     void put(in Item item, string conditionExpression, Item attributeValues)
     {
-        auto resp = m_client.ddbRequest("PutItem", Json([
-            "TableName": Json(this.name),
-            "Item": item.ddbJson,
-            "ConditionExpression": Json(conditionExpression),
-            "ExpressionAttributeValues": attributeValues.ddbJson
-        ]));
+        auto resp = m_client.ddbRequest("PutItem", Json(["TableName" : Json(this.name), "Item" : item.ddbJson,
+                "ConditionExpression" : Json(conditionExpression),
+                "ExpressionAttributeValues" : attributeValues.ddbJson]));
     }
 
-    Item get(T)(string hashKey, T hashValue) {
-        return get(Json([
-            hashKey: variantToDDB(toVariant(hashValue))
-            ]));
+    Item get(T)(string hashKey, T hashValue)
+    {
+        return get(Json([hashKey : variantToDDB(toVariant(hashValue))]));
     }
 
-    Item get(T, U)(string hashKey, T hashValue, string rangeKey, U rangeValue) {
-        return get(Json([
-            hashKey: variantToDDB(toVariant(hashValue)),
-            rangeKey: variantToDDB(toVariant(rangeValue))
-            ]));
+    Item get(T, U)(string hashKey, T hashValue, string rangeKey, U rangeValue)
+    {
+        return get(Json([hashKey : variantToDDB(toVariant(hashValue)), rangeKey
+                : variantToDDB(toVariant(rangeValue))]));
     }
 
     private Item get(Json key)
     {
-        auto resp = m_client.ddbRequest("GetItem", Json([
-            "TableName": Json(this.name),
-            "Key": key
-        ]));
-        
+        auto resp = m_client.ddbRequest("GetItem", Json(["TableName"
+                : Json(this.name), "Key" : key]));
+
         Item ret;
         auto itemKey = "Item" in resp.responseBody;
-        if (!itemKey) 
+        if (!itemKey)
             throw new ItemNotFoundException("No item with key " ~ key.toString());
 
         auto obj = itemKey.get!(Json[string]);
@@ -162,25 +201,21 @@ class Table
         return ret;
     }
 
-    void del(T)(string hashKey, T hashValue) {
-        return del(Json([
-            hashKey: variantToDDB(toVariant(hashValue))
-            ]));
+    void del(T)(string hashKey, T hashValue)
+    {
+        return del(Json([hashKey : variantToDDB(toVariant(hashValue))]));
     }
 
-    void del(T, U)(string hashKey, T hashValue, string rangeKey, U rangeValue) {
-        return del(Json([
-            hashKey: variantToDDB(toVariant(hashValue)),
-            rangeKey: variantToDDB(toVariant(rangeValue))
-            ]));
+    void del(T, U)(string hashKey, T hashValue, string rangeKey, U rangeValue)
+    {
+        return del(Json([hashKey : variantToDDB(toVariant(hashValue)), rangeKey
+                : variantToDDB(toVariant(rangeValue))]));
     }
 
     private void del(Json key)
     {
-        auto resp = m_client.ddbRequest("DeleteItem", Json([
-            "TableName": Json(this.name),
-            "Key": key
-        ]));
+        auto resp = m_client.ddbRequest("DeleteItem", Json(["TableName"
+                : Json(this.name), "Key" : key]));
     }
 }
 
@@ -204,10 +239,12 @@ private Json variantToDDB(Variant v)
         ret["N"] = Json(v.coerce!string);
     else if (v.convertsTo!long)
         ret["N"] = Json(v.coerce!string);
-    else if (v.type == typeid(StringSet)) {
+    else if (v.type == typeid(StringSet))
+    {
         ret["SS"] = Json(v.get!StringSet.array().map!(s => Json(s)).array());
     }
-    else if (v.type == typeid(Variant[string])) {
+    else if (v.type == typeid(Variant[string]))
+    {
         auto o = Json.emptyObject;
         auto value = v.get!(Variant[string]);
         foreach (name; value.byKey())
@@ -219,41 +256,51 @@ private Json variantToDDB(Variant v)
         throw new Exception("Unsupported DynamoDB value type: " ~ v.type.to!string);
 
     // FIXME: support more types
-        
+
     return ret;
 }
 
 private Variant DDBtoVariant(Json obj)
 {
-    if ("NULL" in obj) return Variant();
+    if ("NULL" in obj)
+        return Variant();
     auto pv = "S" in obj;
-    if (pv) return Variant(pv.get!string);
+    if (pv)
+        return Variant(pv.get!string);
     pv = "B" in obj;
-    if (pv) return Variant(Base64.decode(pv.get!string));
+    if (pv)
+        return Variant(Base64.decode(pv.get!string));
     pv = "BOOL" in obj;
-    if (pv) return Variant(pv.get!string == "true");
+    if (pv)
+        return Variant(pv.get!string == "true");
     pv = "N" in obj;
-    if (pv) {
+    if (pv)
+    {
         // Number, but which type?
         if (pv.get!string.indexOf(".") != -1)
             return Variant(pv.get!string.to!double);
-        try {
+        try
+        {
             return Variant(pv.get!string.to!int);
-        } catch (ConvOverflowException ex) {
+        }
+        catch (ConvOverflowException ex)
+        {
             return Variant(pv.get!string.to!long);
         }
     }
     pv = "SS" in obj;
-    if (pv) {
+    if (pv)
+    {
         StringSet ss = stringSet();
-        foreach (x; arrayIterator(*pv)) 
+        foreach (x; arrayIterator(*pv))
         {
             ss.stableInsert(x.get!string);
         }
         return Variant(ss);
     }
     pv = "M" in obj;
-    if (pv) {
+    if (pv)
+    {
         // Object
         Json[string] src = pv.get!(Json[string]);
         Variant[string] dest;
@@ -267,7 +314,8 @@ private Variant DDBtoVariant(Json obj)
     throw new Exception("Unsupported DynamoDB value: " ~ obj.toString());
 }
 
-unittest {
+unittest
+{
     assert(variantToDDB(Variant("foo"))["S"] == Json("foo"));
     assert(variantToDDB(Variant(3))["N"] == Json("3"));
     assert(variantToDDB(Variant(3.14))["N"] == Json("3.14"));
@@ -293,16 +341,16 @@ struct Item
 {
     Variant[string] attrs;
 
-    ref Item set(T)(string key, T value)
-        if (!isAssociativeArray!T)
+    ref Item set(T)(string key, T value) if (!isAssociativeArray!T)
     {
         attrs[key] = toVariant(value);
         return this;
     }
 
-	inout(Variant)* opBinaryRight(string op)(string other) inout if(op == "in") {
-		return other in attrs;
-	}
+    inout(Variant)* opBinaryRight(string op)(string other) inout if (op == "in")
+    {
+        return other in attrs;
+    }
 
     ref Item unset(string key)
     {
@@ -327,7 +375,7 @@ struct Item
      */
     @property Json ddbJson() const
     {
-        auto jsonItem = Json.emptyObject; 
+        auto jsonItem = Json.emptyObject;
         foreach (a; attrs.byKey())
         {
             jsonItem[a] = variantToDDB(attrs[a]);
@@ -346,7 +394,8 @@ struct Item
     }
 }
 
-unittest {
+unittest
+{
     Item u;
     u.set("set", stringSet());
     u["set"].get!StringSet.stableInsert("hoi");
