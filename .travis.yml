@@ -17,5 +17,5 @@ d:
   - ldc-1.6.0
 
 script:
-  #- dub build --compiler=$DC || exit 1
+  - dub build --compiler=$DC || exit 1
   - dub test --compiler=$DC || exit 1
