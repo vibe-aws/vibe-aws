@@ -1,4 +1,4 @@
-vibe-aws
+vibe-aws [![Build Status](https://travis-ci.org/vibe-aws/vibe-aws.svg?branch=master)](https://travis-ci.org/vibe-aws/vibe-aws)
 ========
 
 An AWS client library for the D programming language, based on the vibe.d
