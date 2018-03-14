@@ -1,6 +1,7 @@
 .dub
 docs.json
 __dummy.html
+vibe-aws-test-library
 *.o
 *.a
 *.obj
