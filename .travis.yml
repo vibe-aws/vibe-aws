@@ -23,6 +23,7 @@ matrix:
   allow_failures:
   - d: dmd-nightly
   - d: dmd-beta
+  - d: dmd
   - d: ldc
   - d: ldc-beta
 
