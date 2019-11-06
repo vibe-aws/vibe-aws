@@ -156,7 +156,7 @@ class AWSClient
                     req.headers["host"] = endpoint;
                     if (creds.sessionToken && !creds.sessionToken.empty)
                         req.headers["x-amz-security-token"] = creds.sessionToken;
-                    req.contentType = "application/x-amz-json-1.0";
+                    req.contentType = "application/x-amz-json-1.1";
                     signRequest(req, jsonString, creds, timeString, region, service);
                     req.writeBody(jsonString);
                 });
